@@ -1,0 +1,85 @@
+name: ACRE
+version: "1.0.0"
+description: >
+  Autonomous Code Refactoring Environment - an RL environment where an
+  agent improves Python code quality using AST-level transformations.
+author: "Nikhil Pratap Singh, Pranav Mangal, Ananya Gupta"
+entrypoint: "openenv_interface:OpenEnvRefactorEnv"
+tags:
+  - openenv
+
+tasks:
+  - id: rename_variables
+    name: "Rename Variables (Easy)"
+    description: "Rename generic variable names (x, tmp) to descriptive ones"
+    difficulty: easy
+    reward_range: [0.0, 1.0]
+    max_steps: 5
+
+  - id: remove_dead_code
+    name: "Remove Dead Code (Medium)"
+    description: "Remove unreachable statements, if-False blocks, and unused assignments"
+    difficulty: medium
+    reward_range: [0.0, 1.0]
+    max_steps: 5
+
+  - id: full_refactor
+    name: "Full Refactor (Hard)"
+    description: "Apply all transformations - rename, dead code removal, loop simplification, condition optimization, and function inlining"
+    difficulty: hard
+    reward_range: [0.0, 1.0]
+    max_steps: 5
+
+observation_space:
+  type: Box
+  shape: [4]
+  dtype: float32
+  low: [0.0, 0.0, 0.0, 0.0]
+  high: [inf, inf, inf, 1.0]
+  fields:
+    - code_length
+    - complexity_score
+    - runtime_s
+    - error_flag
+
+action_space:
+  type: Discrete
+  n: 5
+  actions:
+    0: rename_variable
+    1: remove_dead_code
+    2: simplify_loop
+    3: optimize_condition
+    4: inline_function
+
+api:
+  health: "GET /"
+  reset: "POST /reset"
+  step: "POST /step"
+  state: "GET /state"
+  tasks: "GET /tasks"
+  grade: "POST /tasks/{task_id}/grade"
+
+reward:
+  raw_range: [-32, 20]
+  normalized_range: [0.0, 1.0]
+  formula: "(raw + 32) / 52"
+  components:
+    success: { max: 10, min: -10 }
+    complexity: { max: 5, min: -5 }
+    performance: { max: 5, min: -2 }
+    error: { max: 0, min: -15 }
+    no_change: { max: 0, min: -2 }
+
+validation:
+  python_api:
+    reset: "ObservationModel"
+    step: "(ObservationModel, RewardModel, done, info)"
+    state: "StateResponse"
+  http_api:
+    health: "GET /"
+    reset: "POST /reset"
+    step: "POST /step"
+    state: "GET /state"
+    tasks: "GET /tasks"
+    grade: "POST /tasks/{task_id}/grade"
