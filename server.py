@@ -12,6 +12,7 @@ Endpoints (all required by OpenEnv spec):
 from __future__ import annotations
 
 import difflib
+import sys
 import os
 import re
 import json
@@ -23,6 +24,8 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from openai import OpenAI
+
+sys.path.append(os.path.abspath("."))
 
 try:
     from stable_baselines3 import PPO
