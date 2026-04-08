@@ -358,6 +358,7 @@ def _demo_html() -> str:
             </div>
             <textarea id=\"input\" spellcheck=\"false\" placeholder=\"Paste your Python code here...\"></textarea>
             <p class=\"meta\" id=\"status\">Status: ready</p>
+            <p class=\"meta\" id=\"liveResults\">Live results: loading...</p>
         </div>
 
         <div class=\"cols\" style=\"margin-top: 14px\">
@@ -447,7 +448,27 @@ def _demo_html() -> str:
             }
         }
 
+        async function loadLiveResults() {
+            const el = document.getElementById('liveResults');
+            try {
+                const res = await fetch('/demo');
+                const data = await res.json();
+                const r = (data && data.results) ? data.results : null;
+                if (!res.ok || !r) {
+                    throw new Error('demo request failed');
+                }
+                const easy = (r.easy ?? 0).toFixed(4);
+                const medium = (r.medium ?? 0).toFixed(4);
+                const hard = (r.hard ?? 0).toFixed(4);
+                const final = (r.final ?? 0).toFixed(4);
+                el.textContent = `Live results: Easy=${easy}  Medium=${medium}  Hard=${hard}  Final=${final}`;
+            } catch (err) {
+                el.textContent = `Live results: error (${err.message || err})`;
+            }
+        }
+
         loadExample(1);
+        loadLiveResults();
         document.getElementById('input').addEventListener('input', () => {
             if (!document.getElementById('autoSuggest').checked) {
                 return;
