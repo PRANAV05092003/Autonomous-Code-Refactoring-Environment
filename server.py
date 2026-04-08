@@ -12,10 +12,10 @@ Endpoints (all required by OpenEnv spec):
 from __future__ import annotations
 
 import difflib
-import sys
 import os
 import re
 import json
+import sys
 from typing import Optional
 
 import uvicorn
@@ -25,7 +25,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from openai import OpenAI
 
-sys.path.append(os.path.abspath("."))
+PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
 
 try:
     from stable_baselines3 import PPO

@@ -3,6 +3,7 @@ title: ACRE - Autonomous Code Refactoring Environment
 colorFrom: blue
 colorTo: green
 sdk: docker
+app_file: server.py
 app_port: 7860
 pinned: false
 license: mit
