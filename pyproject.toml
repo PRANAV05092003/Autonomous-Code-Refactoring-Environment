@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "acre-openenv"
 version = "1.0.0"
-description = "Autonomous Code Refactoring Environment using OpenEnv"
+description = "Autonomous Code Refactoring Environment"
 authors = [
     { name = "Pranav Mangal" }
 ]
@@ -14,12 +14,17 @@ dependencies = [
     "uvicorn",
     "pydantic",
     "openai",
-    "gymnasium"
+    "gymnasium",
+    "openenv-core>=0.2.0"
 ]
+
+[project.scripts]
+server = "server.app:app"
 
 [tool.setuptools.packages.find]
 where = ["."]
+include = ["acre*", "server*"]
 
 [tool.openenv]
-entry_point = "server.py"
+entry_point = "server.app:app"
 

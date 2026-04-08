@@ -5,7 +5,7 @@ gymnasium
 stable-baselines3
 radon>=6.0.1
 openai>=1.0.0
-openenv>=0.1.13
 requests>=2.31.0
 pydantic>=2.0.0
 typing_extensions>=4.0.0
+openenv-core>=0.2.0

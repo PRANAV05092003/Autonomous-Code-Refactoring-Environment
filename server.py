@@ -1,84 +1,18 @@
 """
-ACRE OpenEnv HTTP server.
+Legacy server runner.
 
-Endpoints (all required by OpenEnv spec):
-  GET  /          — health check (must return HTTP 200)
-  POST /reset     — reset environment, returns observation + info
-  POST /step      — take one step, returns obs/reward/done/info
-  GET  /state     — full current state snapshot
-  GET  /tasks     — list all tasks with initial code
-  POST /tasks/{task_id}/grade  — grade code for a specific task
+OpenEnv validation expects the FastAPI app to be importable at:
+  server.app:app
+
+This file is kept as a thin runner for local execution and Docker CMD.
 """
+
 from __future__ import annotations
 
-import difflib
 import os
-import re
-import json
-import sys
-from typing import Optional
-
 import uvicorn
-import numpy as np
-from fastapi import FastAPI, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, JSONResponse
-from openai import OpenAI
 
-PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
-if PROJECT_ROOT not in sys.path:
-    sys.path.insert(0, PROJECT_ROOT)
-
-try:
-    from stable_baselines3 import PPO
-except Exception:
-    PPO = None  # type: ignore[assignment]
-
-from acre.tasks.task_registry import TaskRegistry
-from models import (
-    ActionModel,
-    CompatibilityHealthResponse,
-    GradeRequest,
-    GradeResponse,
-    HealthResponse,
-    OptimizationStep,
-    OptimizeRequest,
-    OptimizeResponse,
-    ResetRequest,
-    ResetResponse,
-    StateResponse,
-    StepRequest,
-    StepResponse,
-    TaskInfo,
-    TasksResponse,
-)
-from openenv_interface import OpenEnvRefactorEnv
-
-DEFAULT_API_BASE_URL = os.getenv("API_BASE_URL", "https://api.openai.com/v1")
-DEFAULT_MODEL_NAME = os.getenv("MODEL_NAME", "gpt-4o-mini")
-DEFAULT_RL_MODEL_PATH = os.getenv("RL_MODEL_PATH", "acre_agent.zip")
-
-# ---------------------------------------------------------------------------
-# App setup
-# ---------------------------------------------------------------------------
-
-app = FastAPI(
-    title="ACRE — Autonomous Code Refactoring Environment",
-    description="OpenEnv-compatible RL environment for Python code refactoring.",
-    version="1.0.0",
-)
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-# Global singletons
-registry = TaskRegistry()
-_env: Optional[OpenEnvRefactorEnv] = None
-_rl_model_cache: dict[str, object] = {}
+from server.app import app  # noqa: F401  (re-export for convenience)
 
 
 def get_env() -> OpenEnvRefactorEnv:
@@ -704,4 +638,4 @@ def optimize(req: OptimizeRequest) -> OptimizeResponse:
 
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 7860))
-    uvicorn.run(app, host="0.0.0.0", port=port)
+    uvicorn.run("server.app:app", host="0.0.0.0", port=port)

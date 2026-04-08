@@ -4,7 +4,7 @@ description: >
   Autonomous Code Refactoring Environment - an RL environment where an
   agent improves Python code quality using AST-level transformations.
 author: "Nikhil Pratap Singh, Pranav Mangal, Ananya Gupta"
-entrypoint: "openenv_interface:OpenEnvRefactorEnv"
+entrypoint: "server.app:app"
 tags:
   - openenv
 
