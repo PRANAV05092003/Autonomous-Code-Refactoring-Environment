@@ -167,9 +167,9 @@ The deterministic fallback policy used by `inference.py` produces the following 
 
 | Task | Score |
 |---|---|
-| `rename_variables` | 1.0 |
-| `remove_dead_code` | 1.0 |
-| `full_refactor` | 1.0 |
-| Average | 1.0 |
+| `rename_variables` | 1.0000 |
+| `remove_dead_code` | 0.2500 |
+| `full_refactor` | 0.7143 |
+| Average | 0.6548 |
 
 These scores come from the built-in heuristic policy with `HF_TOKEN` unset, which keeps the baseline reproducible across runs.

@@ -62,7 +62,23 @@ class OpenEnvRefactorEnv(OpenEnvBase):
             task = self._registry.get_task(task_id)
             if task is None:
                 raise ValueError(f"Task '{task_id}' not found")
-            initial_code = task.initial_code
+            # Load a multi-sample dataset for this task. Sample selection is
+            # deterministic given the `seed` passed to `reset()`.
+            samples = list(getattr(task, "samples", []) or [])
+            if not samples:
+                initial_code = task.initial_code
+            else:
+                self._env.dataset = CodeSampleDataset(
+                    [
+                        CodeSample(
+                            id=f"{task_id}:{i}",
+                            language="python",
+                            code=str(src),
+                        )
+                        for i, src in enumerate(samples)
+                    ]
+                )
+                return None
 
         if initial_code is None:
             return None

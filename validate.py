@@ -204,8 +204,16 @@ def run_validation(base_url: str) -> int:
     try:
         inference_src = read_text("inference.py")
         failures += 0 if check("inference.py exists", True) else 1
-        for marker in ['"event": "START"', '"event": "STEP"', '"event": "END"']:
-            failures += 0 if check(f"inference.py emits {marker}", marker in inference_src) else 1
+        # Accept either the older JSON event markers or the strict hackathon
+        # line-based format:
+        #   START <task_id>
+        #   STEP <action>
+        #   END <score>
+        json_markers_ok = all(m in inference_src for m in ['"event": "START"', '"event": "STEP"', '"event": "END"'])
+        line_markers_ok = all(m in inference_src for m in ["START ", "STEP ", "END "])
+        failures += 0 if check("inference.py emits START marker", json_markers_ok or line_markers_ok) else 1
+        failures += 0 if check("inference.py emits STEP marker", json_markers_ok or line_markers_ok) else 1
+        failures += 0 if check("inference.py emits END marker", json_markers_ok or line_markers_ok) else 1
         failures += 0 if check(
             "Uses OpenAI client",
             "from openai import OpenAI" in inference_src,

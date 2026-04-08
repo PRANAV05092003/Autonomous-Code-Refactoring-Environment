@@ -1,17 +1,18 @@
 """
 ACRE inference script for OpenEnv submission evaluation.
 
-Required environment variables:
-  API_BASE_URL: LLM API endpoint (default allowed)
-  MODEL_NAME: model identifier (default allowed)
-  HF_TOKEN: API token for the OpenAI-compatible endpoint
-  ENV_URL: running ACRE server base URL
+Environment variables:
+  - API_BASE_URL: LLM API endpoint (default allowed)
+  - MODEL_NAME: model identifier (default allowed)
+  - HF_TOKEN: API token for the OpenAI-compatible endpoint (NO default)
+  - ENV_URL: running ACRE server base URL (required)
+  - LOCAL_IMAGE_NAME: present for evaluator compatibility (optional)
+  - USE_LLM: set to "1" to enable LLM action selection when HF_TOKEN is set
 
-Optional:
-  LOCAL_IMAGE_NAME: present for evaluator compatibility when using a local
-  Docker image launcher.
-
-Stdout format uses strict START / STEP / END event markers.
+STRICT stdout format (do not change):
+  START <task_id>
+  STEP <action_int>
+  END <score_float>
 """
 from __future__ import annotations
 
@@ -20,7 +21,7 @@ import os
 import re
 import sys
 import time
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import requests
 from openai import OpenAI
@@ -95,7 +96,7 @@ def grade(task_id: str, code: str) -> float:
     return float(response.json().get("score", 0.0))
 
 
-def choose_action(client: OpenAI, state: dict, task_id: str) -> Tuple[int, str]:
+def choose_action(client: Optional[OpenAI], state: dict, task_id: str) -> Tuple[int, str]:
     def heuristic_action() -> Tuple[int, str]:
         code = str(state.get("current_code", ""))
         step_i = int(state.get("episode_steps", 0))
@@ -141,7 +142,8 @@ def choose_action(client: OpenAI, state: dict, task_id: str) -> Tuple[int, str]:
             return 1, "heuristic: remove remaining dead code"
         return 3, "heuristic: condition optimization as safe default"
 
-    if not HF_TOKEN:
+    use_llm = bool(HF_TOKEN) and os.getenv("USE_LLM", "0") == "1"
+    if (not use_llm) or client is None:
         return heuristic_action()
 
     messages = [
@@ -184,23 +186,12 @@ def choose_action(client: OpenAI, state: dict, task_id: str) -> Tuple[int, str]:
         return heuristic_action()
 
 
-def run_episode(client: OpenAI, task_id: str, episode_num: int) -> float:
+def run_episode(client: Optional[OpenAI], task_id: str, episode_num: int) -> float:
     reset_env(task_id)
     state = get_state()
 
-    print(
-        json.dumps(
-            {
-                "event": "START",
-                "episode": episode_num,
-                "task_id": task_id,
-                "initial_complexity": state.get("complexity", 0),
-                "initial_code_length": len(state.get("current_code", "")),
-                "timestamp": time.time(),
-            }
-        ),
-        flush=True,
-    )
+    # STRICT logging format required by evaluator.
+    print(f"START {task_id}", flush=True)
 
     cumulative_reward = 0.0
 
@@ -214,25 +205,8 @@ def run_episode(client: OpenAI, task_id: str, episode_num: int) -> float:
         norm_reward = float(reward_payload.get("normalized", (raw_reward + 32) / 52))
         cumulative_reward += raw_reward
 
-        print(
-            json.dumps(
-                {
-                    "event": "STEP",
-                    "episode": episode_num,
-                    "step": step_num,
-                    "action": action,
-                    "action_name": ACTION_MEANINGS.get(action, "unknown"),
-                    "reason": reason,
-                    "reward": round(raw_reward, 4),
-                    "normalized_reward": round(norm_reward, 4),
-                    "cumulative_reward": round(cumulative_reward, 4),
-                    "changed": result.get("info", {}).get("changed", False),
-                    "reward_components": reward_payload.get("components", {}),
-                    "done": result.get("done", False),
-                }
-            ),
-            flush=True,
-        )
+        # STRICT logging format required by evaluator.
+        print(f"STEP {int(action)}", flush=True)
 
         if result.get("done") or result.get("terminated") or result.get("truncated"):
             break
@@ -240,21 +214,8 @@ def run_episode(client: OpenAI, task_id: str, episode_num: int) -> float:
     final_state = get_state()
     task_score = grade(task_id, final_state.get("current_code", ""))
 
-    print(
-        json.dumps(
-            {
-                "event": "END",
-                "episode": episode_num,
-                "task_id": task_id,
-                "cumulative_reward": round(cumulative_reward, 4),
-                "normalized_cumulative": round((cumulative_reward + 32) / 52, 4),
-                "task_score": round(task_score, 4),
-                "final_complexity": final_state.get("complexity", 0),
-                "timestamp": time.time(),
-            }
-        ),
-        flush=True,
-    )
+    # STRICT logging format required by evaluator.
+    print(f"END {task_score:.4f}", flush=True)
 
     return task_score
 
@@ -263,7 +224,9 @@ def main() -> None:
     if not ENV_URL:
         raise SystemExit("ENV_URL is required. Example: ENV_URL=http://localhost:7860")
 
-    client = OpenAI(base_url=API_BASE_URL, api_key=HF_TOKEN or "dummy")
+    client: Optional[OpenAI] = None
+    if HF_TOKEN and os.getenv("USE_LLM", "0") == "1":
+        client = OpenAI(base_url=API_BASE_URL, api_key=HF_TOKEN)
 
     scores: List[float] = []
     for i, task_id in enumerate(TASKS, start=1):
