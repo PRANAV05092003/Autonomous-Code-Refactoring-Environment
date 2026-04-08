@@ -468,25 +468,15 @@ def _demo_html() -> str:
 # Routes
 # ---------------------------------------------------------------------------
 
-@app.get("/")
-def root() -> JSONResponse:
+@app.get("/", response_class=HTMLResponse)
+def root() -> HTMLResponse:
     """
-    Live demo root endpoint.
+    Hugging Face Space homepage.
 
-    Hugging Face Spaces typically render the response from `/` in the preview.
-    We run a deterministic demo episode over all tasks and return the results.
+    Serve the interactive UI so opening the Space shows a real demo page.
+    The live JSON execution results remain available at `GET /demo`.
     """
-    from inference import run_all_tasks
-
-    results = run_all_tasks()
-    payload = {
-        "status": "ok",
-        "env": "ACRE",
-        "version": "1.0.0",
-        "message": "ACRE running successfully",
-        "results": results,
-    }
-    return JSONResponse(content=payload)
+    return HTMLResponse(content=_demo_html())
 
 
 @app.get("/health", response_model=CompatibilityHealthResponse)
@@ -505,7 +495,7 @@ def demo() -> JSONResponse:
 
 @app.get("/ui", response_class=HTMLResponse)
 def demo_ui() -> HTMLResponse:
-    """Simple UI to compare original and optimized code side-by-side."""
+    """Alias for the interactive UI (same as `/`)."""
     return HTMLResponse(content=_demo_html())
 
 
