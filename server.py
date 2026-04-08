@@ -544,7 +544,8 @@ def grade(task_id: str, req: GradeRequest) -> GradeResponse:
     task = registry.get_task(task_id)
     if task is None:
         raise HTTPException(status_code=404, detail=f"Task '{task_id}' not found")
-    score = task.grade(req.code)
+    # Use the deterministic expected-output grader for the public grade endpoint.
+    score = task.grade_against_expected(req.code)
     return GradeResponse(
         task_id=task_id,
         score=round(score, 4),

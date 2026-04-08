@@ -5,7 +5,12 @@ from __future__ import annotations
 
 import ast
 from dataclasses import dataclass
-from typing import Callable, Dict, List, Optional, Sequence
+from typing import Callable, Dict, List, Optional, Sequence, Tuple
+
+from acre.tasks.easy_task import EasyTask
+from acre.tasks.hard_task import HardTask
+from acre.tasks.medium_task import MediumTask
+from acre.tasks.grader import grade_task
 
 
 @dataclass
@@ -15,11 +20,17 @@ class Task:
     description: str
     difficulty: str
     samples: List[str]
+    expected_outputs: List[str]
     _grade_fn: Callable[[str], float]
 
     @property
     def initial_code(self) -> str:
         return str(self.samples[0]) if self.samples else ""
+
+    def expected_output_for_index(self, idx: int) -> str:
+        if 0 <= idx < len(self.expected_outputs):
+            return str(self.expected_outputs[idx])
+        return str(self.expected_outputs[0]) if self.expected_outputs else ""
 
     def grade(self, code: str) -> float:
         """Return a score in [0.0, 1.0]."""
@@ -27,6 +38,17 @@ class Task:
             return float(min(1.0, max(0.0, self._grade_fn(code))))
         except Exception:
             return 0.0
+
+    def grade_against_expected(self, code: str) -> float:
+        """
+        Deterministic grader comparing against this task's expected outputs.
+
+        Since the HTTP `grade` endpoint doesn't know which sample was active, we
+        score against the best-matching expected output (still deterministic).
+        """
+        if not self.expected_outputs:
+            return 0.0
+        return float(max(grade_task(code, exp) for exp in self.expected_outputs))
 
 
 def _safe_unparse(tree: ast.AST) -> str:
@@ -109,6 +131,37 @@ def merge(a, b):
 """,
 ]
 
+_EASY_EXPECTED: List[str] = [
+    EasyTask.expected_output,
+    """\
+def normalize(temp_value, value):
+    for index in range(3):
+        temp_value = temp_value + index
+    return temp_value * value
+""",
+    """\
+def score(items):
+    total = 0
+    for item in items:
+        total += item
+    value = total
+    return value
+""",
+    """\
+def transform(value):
+    temp_value = value
+    if temp_value > 10:
+        temp_value = temp_value - 1
+    return temp_value
+""",
+    """\
+def merge(a, b):
+    left = a
+    right = b
+    return left + right
+""",
+]
+
 
 def _grade_easy(code: str) -> float:
     """Score = fraction of generic names removed from all scopes."""
@@ -188,6 +241,31 @@ def calc(n):
         total += i
     return total
     print("dead")
+""",
+]
+
+_MEDIUM_EXPECTED: List[str] = [
+    MediumTask.expected_output,
+    """\
+def build(values):
+    return [v + 1 for v in values]
+""",
+    """\
+def route(flag):
+    x = 2
+    y = x
+    return y
+""",
+    """\
+def clean(xs):
+    return [x * 2 for x in xs]
+""",
+    """\
+def calc(n):
+    total = 0
+    for index in range(n):
+        total += index
+    return total
 """,
 ]
 
@@ -299,6 +377,30 @@ def compute(tmp, data, x):
 """,
 ]
 
+_HARD_EXPECTED: List[str] = [
+    HardTask.expected_output,
+    """\
+def pipeline(offset, xs, value):
+    _ = [item * 2 for item in xs]
+    return offset + value
+""",
+    """\
+def compute(value, data, offset):
+    _ = [item * 2 for item in data]
+    return value + offset
+""",
+    """\
+def compute(value, data, offset):
+    _ = [item * 2 for item in data]
+    return value + offset
+""",
+    """\
+def compute(offset, data, value):
+    _ = [item * 2 for item in data]
+    return value + offset
+""",
+]
+
 
 def _grade_hard(code: str) -> float:
     """Score = fraction of 7 quality checks passed."""
@@ -365,25 +467,28 @@ class TaskRegistry:
         self._tasks["rename_variables"] = Task(
             id="rename_variables",
             name="Rename Variables (Easy)",
-            description="Rename generic variable names (x, tmp) to descriptive ones",
+            description=EasyTask.description,
             difficulty="easy",
             samples=_EASY_SAMPLES,
+            expected_outputs=_EASY_EXPECTED,
             _grade_fn=_grade_easy,
         )
         self._tasks["remove_dead_code"] = Task(
             id="remove_dead_code",
             name="Remove Dead Code (Medium)",
-            description="Remove unreachable code, if False blocks, and unused variables",
+            description=MediumTask.description,
             difficulty="medium",
             samples=_MEDIUM_SAMPLES,
+            expected_outputs=_MEDIUM_EXPECTED,
             _grade_fn=_grade_medium,
         )
         self._tasks["full_refactor"] = Task(
             id="full_refactor",
             name="Full Refactor (Hard)",
-            description="Apply all transformations: rename, dead code, loops, conditions, inlining",
+            description=HardTask.description,
             difficulty="hard",
             samples=_HARD_SAMPLES,
+            expected_outputs=_HARD_EXPECTED,
             _grade_fn=_grade_hard,
         )
 

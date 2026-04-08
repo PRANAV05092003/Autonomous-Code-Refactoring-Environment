@@ -26,9 +26,9 @@ from typing import Dict, List, Optional, Tuple
 import requests
 from openai import OpenAI
 
-API_BASE_URL: str = os.getenv("API_BASE_URL", "https://api.openai.com/v1")
-MODEL_NAME: str = os.getenv("MODEL_NAME", "gpt-4o-mini")
-HF_TOKEN: str | None = os.getenv("HF_TOKEN")
+API_BASE_URL = os.getenv("API_BASE_URL") or "https://api.openai.com/v1"
+MODEL_NAME = os.getenv("MODEL_NAME") or "gpt-4o-mini"
+HF_TOKEN = os.getenv("HF_TOKEN")
 ENV_URL: str | None = os.getenv("ENV_URL")
 LOCAL_IMAGE_NAME: str | None = os.getenv("LOCAL_IMAGE_NAME")
 
@@ -224,16 +224,25 @@ def main() -> None:
     if not ENV_URL:
         raise SystemExit("ENV_URL is required. Example: ENV_URL=http://localhost:7860")
 
+    # Required: OpenAI client is constructed via official SDK.
     client: Optional[OpenAI] = None
-    if HF_TOKEN and os.getenv("USE_LLM", "0") == "1":
+    if HF_TOKEN:
         client = OpenAI(base_url=API_BASE_URL, api_key=HF_TOKEN)
 
-    scores: List[float] = []
+    scores: Dict[str, float] = {}
     for i, task_id in enumerate(TASKS, start=1):
-        score = run_episode(client, task_id, i)
-        scores.append(score)
+        scores[task_id] = run_episode(client, task_id, i)
 
-    avg_score = sum(scores) / len(scores) if scores else 0.0
+    easy = float(scores.get("rename_variables", 0.0))
+    medium = float(scores.get("remove_dead_code", 0.0))
+    hard = float(scores.get("full_refactor", 0.0))
+    avg_score = (easy + medium + hard) / 3.0
+
+    print(f"Easy: {easy:.4f}")
+    print(f"Medium: {medium:.4f}")
+    print(f"Hard: {hard:.4f}")
+    print(f"Final: {avg_score:.4f}")
+
     sys.exit(0 if avg_score >= 0.5 else 1)
 
 

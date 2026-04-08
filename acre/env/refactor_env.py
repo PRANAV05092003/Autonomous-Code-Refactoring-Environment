@@ -13,6 +13,8 @@ import numpy as np
 
 from acre.actions import transformations as tx
 from acre.datasets.code_samples import CodeSample, CodeSampleDataset
+from acre.tasks.task_registry import TaskRegistry
+from acre.tasks.grader import grade_task
 
 try:
     from radon.complexity import cc_visit
@@ -131,10 +133,13 @@ class RefactorEnv(gym.Env):
         self._np_random, _ = gym.utils.seeding.np_random(seed)
 
         self.executor = _InProcessExecutor()
+        self._registry = TaskRegistry()
 
         self._episode_steps = 0
         self._sample: Optional[CodeSample] = None
         self._code: str = ""
+        self._expected_output: str = ""
+        self._progress_score: float = 0.0
         self._last_runtime_s: float = 0.0
         self._last_error: bool = False
         self._last_complexity: float = 0.0
@@ -181,6 +186,22 @@ class RefactorEnv(gym.Env):
         self._code = str(self._sample.code)
         self._episode_steps = 0
 
+        # Resolve expected output deterministically from task_registry based on sample_id.
+        # sample ids are produced by openenv_interface as "{task_id}:{i}".
+        self._expected_output = ""
+        self._progress_score = 0.0
+        sample_id = str(getattr(self._sample, "id", "") or "")
+        if ":" in sample_id:
+            task_id, raw_idx = sample_id.split(":", 1)
+            task = self._registry.get_task(task_id)
+            try:
+                sample_idx = int(raw_idx)
+            except Exception:
+                sample_idx = 0
+            if task is not None:
+                self._expected_output = task.expected_output_for_index(sample_idx)
+                self._progress_score = float(grade_task(self._code, self._expected_output))
+
         self._last_complexity = self._compute_complexity(self._code)
         self._last_runtime_s, self._last_error, _ = self._compute_runtime(self._code)
 
@@ -188,6 +209,7 @@ class RefactorEnv(gym.Env):
             "sample_id": getattr(self._sample, "id", None),
             "language": getattr(self._sample, "language", None),
             "episode_steps": self._episode_steps,
+            "progress_score": float(self._progress_score),
         }
         return self._observation(), info
 
@@ -199,6 +221,7 @@ class RefactorEnv(gym.Env):
         prev_complexity = float(self._last_complexity)
         prev_runtime = float(self._last_runtime_s)
         prev_error = bool(self._last_error)
+        prev_score = float(self._progress_score)
 
         original = self._code
         if action_i == 0:
@@ -218,26 +241,41 @@ class RefactorEnv(gym.Env):
         self._last_complexity = self._compute_complexity(self._code)
         self._last_runtime_s, self._last_error, is_timeout = self._compute_runtime(self._code)
 
+        # Deterministic task progress score toward expected output.
+        score_now = prev_score
+        if self._expected_output:
+            score_now = float(grade_task(self._code, self._expected_output))
+        self._progress_score = float(score_now)
+
+        # ------------------------------------------------------------------
+        # Step-wise reward (hackathon-friendly, deterministic)
+        # ------------------------------------------------------------------
+        # - better code (closer to expected_output) -> +0.3-ish
+        # - reduced complexity -> +0.3-ish
+        # - bug introduced -> -0.5
+        # - infinite loop / timeout -> large penalty
+        delta_score = float(score_now - prev_score)
         complexity_gain = (prev_complexity - float(self._last_complexity)) / max(prev_complexity, 1.0)
         runtime_gain = (prev_runtime - float(self._last_runtime_s)) / max(prev_runtime, 1e-6)
-        # Penalize execution errors strongly; timeouts even more strongly.
-        timeout_penalty = -2.0 if is_timeout else 0.0
-        error_penalty = -1.0 if self._last_error else 0.0
-        change_bonus = 0.05 if transform.changed else 0.0
-        no_change_penalty = -0.02 if not transform.changed else 0.0
+
+        better_code_reward = float(max(-1.0, min(1.0, delta_score)) * 0.6)
+        complexity_reward = float(max(-1.0, min(1.0, complexity_gain)) * 0.3)
+        runtime_reward = float(max(-1.0, min(1.0, runtime_gain)) * 0.1)
+
+        bug_penalty = -0.5 if ((not prev_error) and self._last_error) else 0.0
+        fixed_bonus = 0.2 if (prev_error and (not self._last_error)) else 0.0
+        timeout_penalty = -1.0 if is_timeout else 0.0
+        no_change_penalty = -0.05 if not transform.changed else 0.0
 
         raw_reward = float(
-            2.0 * complexity_gain
-            + 0.25 * runtime_gain
-            + error_penalty
+            better_code_reward
+            + complexity_reward
+            + runtime_reward
+            + bug_penalty
+            + fixed_bonus
             + timeout_penalty
-            + change_bonus
             + no_change_penalty
         )
-        if (not prev_error) and self._last_error:
-            raw_reward -= 0.5
-        if prev_error and (not self._last_error):
-            raw_reward += 0.5
 
         # Normalize exactly as declared in openenv.yaml (clip to [0,1]).
         normalized_reward = float((raw_reward + 32.0) / 52.0)
@@ -254,16 +292,21 @@ class RefactorEnv(gym.Env):
             "changed": bool(transform.changed),
             "transform": dict(transform.metadata),
             "reward_components": {
+                "better_code_reward": float(better_code_reward),
                 "complexity_gain": float(complexity_gain),
                 "runtime_gain": float(runtime_gain),
-                "error_penalty": float(error_penalty),
+                "complexity_reward": float(complexity_reward),
+                "runtime_reward": float(runtime_reward),
+                "bug_penalty": float(bug_penalty),
+                "fixed_bonus": float(fixed_bonus),
                 "timeout_penalty": float(timeout_penalty),
-                "change_bonus": float(change_bonus),
                 "no_change_penalty": float(no_change_penalty),
             },
             "normalized_reward": normalized_reward,
             "episode_steps": int(self._episode_steps),
             "timeout": bool(is_timeout),
+            "progress_score": float(score_now),
+            "progress_delta": float(delta_score),
         }
         return self._observation(), raw_reward, terminated, truncated, info
 
@@ -279,6 +322,7 @@ class RefactorEnv(gym.Env):
             "language": getattr(self._sample, "language", None) if self._sample is not None else None,
             "observation": self._observation().tolist(),
             "action_meanings": dict(self.ACTION_MEANINGS),
+            "progress_score": float(self._progress_score),
         }
 
     def render(self) -> None:

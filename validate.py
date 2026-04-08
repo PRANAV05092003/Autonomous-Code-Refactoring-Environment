@@ -220,18 +220,24 @@ def run_validation(base_url: str) -> int:
         ) else 1
         for var in ["API_BASE_URL", "MODEL_NAME", "HF_TOKEN", "ENV_URL", "LOCAL_IMAGE_NAME"]:
             failures += 0 if check(f"inference.py reads {var} from env", var in inference_src) else 1
-        failures += 0 if check(
-            "API_BASE_URL has a default",
-            'os.getenv("API_BASE_URL", "https://api.openai.com/v1")' in inference_src,
-        ) else 1
-        failures += 0 if check(
-            "MODEL_NAME has a default",
-            'os.getenv("MODEL_NAME", "gpt-4o-mini")' in inference_src,
-        ) else 1
-        failures += 0 if check(
-            "HF_TOKEN has no default",
-            re.search(r'HF_TOKEN\s*:\s*.*os\.getenv\("HF_TOKEN"\)', inference_src) is not None,
-        ) else 1
+        api_base_default_ok = (
+            'os.getenv("API_BASE_URL", "https://api.openai.com/v1")' in inference_src
+            or re.search(r'API_BASE_URL\s*=.*os\.getenv\("API_BASE_URL"\)\s*or\s*"https://api\.openai\.com/v1"', inference_src)
+            is not None
+        )
+        failures += 0 if check("API_BASE_URL has a default", api_base_default_ok) else 1
+
+        model_default_ok = (
+            'os.getenv("MODEL_NAME", "gpt-4o-mini")' in inference_src
+            or re.search(r'MODEL_NAME\s*=.*os\.getenv\("MODEL_NAME"\)\s*or\s*"gpt-4o-mini"', inference_src) is not None
+        )
+        failures += 0 if check("MODEL_NAME has a default", model_default_ok) else 1
+
+        hf_token_no_default_ok = (
+            re.search(r'HF_TOKEN\s*=.*os\.getenv\("HF_TOKEN"\)\s*$', inference_src, flags=re.MULTILINE) is not None
+            and re.search(r'os\.getenv\("HF_TOKEN"\s*,', inference_src) is None
+        )
+        failures += 0 if check("HF_TOKEN has no default", hf_token_no_default_ok) else 1
     except FileNotFoundError:
         failures += 1
         check("inference.py exists", False, "file not found")
