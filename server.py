@@ -22,7 +22,7 @@ import uvicorn
 import numpy as np
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from openai import OpenAI
 
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
@@ -468,10 +468,25 @@ def _demo_html() -> str:
 # Routes
 # ---------------------------------------------------------------------------
 
-@app.get("/", response_model=HealthResponse)
-def health() -> HealthResponse:
-    """Health check — OpenEnv pings this URL to verify the Space is live."""
-    return HealthResponse(status="ok", env="ACRE", version="1.0.0")
+@app.get("/")
+def root() -> JSONResponse:
+    """
+    Live demo root endpoint.
+
+    Hugging Face Spaces typically render the response from `/` in the preview.
+    We run a deterministic demo episode over all tasks and return the results.
+    """
+    from inference import run_all_tasks
+
+    results = run_all_tasks()
+    payload = {
+        "status": "ok",
+        "env": "ACRE",
+        "version": "1.0.0",
+        "message": "ACRE running successfully",
+        "results": results,
+    }
+    return JSONResponse(content=payload)
 
 
 @app.get("/health", response_model=CompatibilityHealthResponse)
@@ -480,7 +495,15 @@ def health_compat() -> CompatibilityHealthResponse:
     return CompatibilityHealthResponse(status="healthy", service="acre-env")
 
 
-@app.get("/demo", response_class=HTMLResponse)
+@app.get("/demo")
+def demo() -> JSONResponse:
+    """Run all tasks and return JSON results."""
+    from inference import run_all_tasks
+
+    return JSONResponse(content={"results": run_all_tasks()})
+
+
+@app.get("/ui", response_class=HTMLResponse)
 def demo_ui() -> HTMLResponse:
     """Simple UI to compare original and optimized code side-by-side."""
     return HTMLResponse(content=_demo_html())
