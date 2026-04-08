@@ -210,13 +210,15 @@ def _demo_html() -> str:
         return "<html><body><h1>ACRE</h1><p>UI unavailable.</p></body></html>"
 
 
-@app.get("/", response_class=HTMLResponse)
-def root() -> HTMLResponse:
-    return HTMLResponse(content=_demo_html())
+@app.get("/", response_model=HealthResponse)
+def root() -> HealthResponse:
+    """Primary OpenEnv health endpoint used by validators."""
+    return HealthResponse(status="healthy", env="acre", version="1.0.0")
 
 
 @app.get("/health", response_model=CompatibilityHealthResponse)
 def health_compat() -> CompatibilityHealthResponse:
+    """Secondary compatibility health endpoint."""
     return CompatibilityHealthResponse(status="healthy", service="acre-env")
 
 

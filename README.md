@@ -27,6 +27,11 @@ ACRE is an OpenEnv-compliant environment designed to simulate real-world softwar
 
 It enables agents to iteratively improve code through structured actions while receiving dense, step-wise reward feedback.
 
+## Environment Overview and Motivation
+
+ACRE models a realistic developer workflow where an agent incrementally improves Python code quality under a fixed action budget.
+The environment is designed for OpenEnv Round 1 requirements: typed APIs, deterministic grading, multi-difficulty tasks, and reproducible inference behavior.
+
 ---
 
 ## 💡 Why This Matters
@@ -74,6 +79,12 @@ Code → Action → Refactor → Reward → Repeat
 
 Each task uses AST-based transformations and deterministic grading.
 
+## Task Descriptions with Expected Difficulty Levels
+
+- Easy (`rename_variables`): rename generic names like `x`, `tmp`, `i` into descriptive identifiers.
+- Medium (`remove_dead_code`): remove unreachable branches and unused assignments while preserving behavior.
+- Hard (`full_refactor`): combine renaming, dead-code elimination, loop simplification, condition cleanup, and helper inlining.
+
 ---
 
 ## 🎯 Reward System
@@ -95,17 +106,17 @@ Rewards are computed at every step:
 ## 📊 Example Execution
 
 ```text
-START rename_variables
-STEP 0
-END 1.00
+[START] task=rename_variables
+[STEP] action=0
+[END] task=rename_variables score=1.00
 
-START remove_dead_code
-STEP 1
-END 0.25
+[START] task=remove_dead_code
+[STEP] action=1
+[END] task=remove_dead_code score=0.25
 
-START full_refactor
-STEP 3
-END 0.71
+[START] task=full_refactor
+[STEP] action=3
+[END] task=full_refactor score=0.71
 
 Final Score: 0.65
 ```
@@ -114,7 +125,8 @@ Final Score: 0.65
 
 ## 🏗️ Architecture
 
-- `server.py` → FastAPI entry point
+- `server/app.py` → FastAPI entry point used by OpenEnv + Docker
+- `server.py` → legacy local runner / UI helper
 - `openenv_interface.py` → OpenEnv wrapper
 - `acre/env/` → Core environment logic
 - `acre/tasks/` → Task definitions
@@ -137,6 +149,11 @@ Uses Pydantic models:
 - `ActionModel`
 - `RewardModel`
 
+## Definitions of Action and Observation Spaces
+
+- Observation space: Box(4) with fields `code_length`, `complexity_score`, `runtime_s`, `error_flag`.
+- Action space: Discrete(5) with actions `rename_variable`, `remove_dead_code`, `simplify_loop`, `optimize_condition`, `inline_function`.
+
 ---
 
 ## 🌐 HTTP API
@@ -155,6 +172,8 @@ Uses Pydantic models:
 
 ## 🚀 Run Locally
 
+## Setup and Usage Instructions
+
 ```bash
 pip install -r requirements.txt
 uvicorn server.app:app --host 0.0.0.0 --port 7860
@@ -169,7 +188,7 @@ docker build -t acre .
 docker run -p 7860:7860 \
   -e API_BASE_URL=https://api.openai.com/v1 \
   -e MODEL_NAME=gpt-4o-mini \
-  -e HF_TOKEN=your_key \
+  -e API_KEY=your_key \
   -e ENV_URL=http://localhost:7860 \
   acre
 ```
@@ -183,7 +202,7 @@ Set environment variables:
 ```bash
 export API_BASE_URL=https://api.openai.com/v1
 export MODEL_NAME=gpt-4o-mini
-export HF_TOKEN=your_key
+export API_KEY=your_key
 export ENV_URL=http://localhost:7860
 ```
 
@@ -236,6 +255,8 @@ openenv validate
 ---
 
 ## 📊 Baseline Performance
+
+## Baseline Performance Scores
 
 | Task | Score |
 |---|---|

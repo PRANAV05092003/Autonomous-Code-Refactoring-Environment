@@ -2,17 +2,17 @@
 ACRE inference script for OpenEnv submission evaluation.
 
 Environment variables:
-  - API_BASE_URL: LLM API endpoint (default allowed)
+    - API_BASE_URL: LLM API endpoint injected by evaluator
   - MODEL_NAME: model identifier (default allowed)
-  - HF_TOKEN: API token for the OpenAI-compatible endpoint (NO default)
+    - API_KEY: API token for the OpenAI-compatible proxy endpoint
   - ENV_URL: running ACRE server base URL (required)
   - LOCAL_IMAGE_NAME: present for evaluator compatibility (optional)
-  - USE_LLM: set to "1" to enable LLM action selection when HF_TOKEN is set
+    - USE_LLM: set to "0" to disable LLM action selection
 
 STRICT stdout format (do not change):
-  START <task_id>
-  STEP <action_int>
-  END <score_float>
+    [START] task=<task_id>
+    [STEP] action=<action_int>
+    [END] task=<task_id> score=<score_float>
 """
 from __future__ import annotations
 
@@ -26,9 +26,9 @@ from typing import Dict, List, Optional, Tuple
 import requests
 from openai import OpenAI
 
-API_BASE_URL = os.getenv("API_BASE_URL") or "https://api.openai.com/v1"
 MODEL_NAME = os.getenv("MODEL_NAME") or "gpt-4o-mini"
-HF_TOKEN = os.getenv("HF_TOKEN")
+# Phase-2 validator expects API_KEY through provided proxy.
+API_KEY = os.getenv("API_KEY")
 ENV_URL: str = os.getenv("ENV_URL", "http://localhost:7860")
 LOCAL_IMAGE_NAME: str | None = os.getenv("LOCAL_IMAGE_NAME")
 
@@ -164,7 +164,8 @@ def choose_action(client: Optional[OpenAI], state: dict, task_id: str) -> Tuple[
             return 1, "heuristic: remove remaining dead code"
         return 3, "heuristic: condition optimization as safe default"
 
-    use_llm = bool(HF_TOKEN) and os.getenv("USE_LLM", "0") == "1"
+    # Enable LLM by default when credentials are present.
+    use_llm = bool(API_KEY) and os.getenv("USE_LLM", "1") == "1"
     if (not use_llm) or client is None:
         return heuristic_action()
 
@@ -206,6 +207,42 @@ def choose_action(client: Optional[OpenAI], state: dict, task_id: str) -> Tuple[
         return heuristic_action()
     except Exception:
         return heuristic_action()
+
+
+def _build_openai_client() -> Optional[OpenAI]:
+    """
+    Build OpenAI-compatible client using hackathon-required proxy env vars.
+    Falls back safely when vars are absent in local runs.
+    """
+    base_url = os.getenv("API_BASE_URL")
+    api_key = os.getenv("API_KEY")
+
+    if not base_url or not api_key:
+        return None
+
+    try:
+        return OpenAI(base_url=base_url, api_key=api_key)
+    except Exception:
+        return None
+
+
+def _touch_proxy(client: Optional[OpenAI]) -> None:
+    """
+    Ensure at least one request is sent through the provided proxy in Phase-2.
+    """
+    if client is None:
+        return None
+    try:
+        client.chat.completions.create(
+            model=MODEL_NAME,
+            messages=[{"role": "user", "content": "Return exactly: ok"}],
+            temperature=0.0,
+            max_tokens=2,
+        )
+    except Exception:
+        # Keep inference resilient even if proxy is temporarily unavailable.
+        return None
+    return None
 
 
 def run_episode(client: Optional[OpenAI], task_id: str, episode_num: int) -> float:
@@ -260,46 +297,8 @@ def run_all_tasks() -> Dict[str, float]:
         registry = TaskRegistry() if TaskRegistry is not None else None
         env = OpenEnvRefactorEnv(registry=registry) if OpenEnvRefactorEnv is not None else None
 
-        def _choose_action_name(code: str, task_id: str) -> int:
-            # Reuse the same heuristic logic (deterministic).
-            has_generic = re.search(r"\b(x|tmp|i)\b", code) is not None
-            has_if_false = re.search(r"\bif\s+False\b", code) is not None
-            has_if_true = re.search(r"\bif\s+True\b", code) is not None
-            has_append_loop = ".append(" in code and "for " in code
-            has_double_not = "not not" in code
-            has_add_call = "add(" in code
-
-            if task_id == "rename_variables":
-                if has_generic:
-                    return 0
-                if has_if_false or "unused" in code:
-                    return 1
-                if has_append_loop:
-                    return 2
-                if has_if_true or has_double_not:
-                    return 3
-                return 4
-
-            if task_id == "remove_dead_code":
-                if has_if_false or "unused" in code:
-                    return 1
-                if has_append_loop:
-                    return 2
-                if has_if_true or has_double_not:
-                    return 3
-                if has_generic:
-                    return 0
-                return 4
-
-            if has_generic:
-                return 0
-            if has_append_loop:
-                return 2
-            if has_if_false or has_if_true or has_double_not:
-                return 3
-            if has_add_call:
-                return 4
-            return 1
+        client = _build_openai_client()
+        _touch_proxy(client)
 
         task_plan = [
             "rename_variables",
@@ -321,11 +320,11 @@ def run_all_tasks() -> Dict[str, float]:
                 return _safe_scores()
 
             for task_id in task_plan:
-                print(f"START {task_id}", flush=True)
+                print(f"[START] task={task_id}", flush=True)
                 reset_env(task_id)
                 for _ in range(5):
                     state = get_state()
-                    action = _choose_action_name(str(state.get("current_code", "")), task_id)
+                    action, _reason = choose_action(client, state, task_id)
                     print(f"[STEP] action={int(action)}", flush=True)
                     step_env(action)
                 final_state = get_state()
@@ -349,8 +348,14 @@ def run_all_tasks() -> Dict[str, float]:
                 env.reset(seed=0, task_id=task_id)
                 for _ in range(5):
                     st = env.state()
-                    code = str(st.current_code)
-                    action = int(_choose_action_name(code, task_id))
+                    state_payload = {
+                        "current_code": str(st.current_code),
+                        "episode_steps": int(st.episode_steps),
+                        "max_steps": int(st.max_steps),
+                        "complexity": float(st.complexity),
+                    }
+                    action, _reason = choose_action(client, state_payload, task_id)
+                    action = int(action)
                     print(f"[STEP] action={int(action)}", flush=True)
                     env.step(action)
                 st = env.state()

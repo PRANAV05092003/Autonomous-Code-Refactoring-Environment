@@ -204,28 +204,39 @@ def run_validation(base_url: str) -> int:
     try:
         inference_src = read_text("inference.py")
         failures += 0 if check("inference.py exists", True) else 1
-        # Accept either the older JSON event markers or the strict hackathon
-        # line-based format:
-        #   START <task_id>
-        #   STEP <action>
-        #   END <score>
+        # Accept legacy JSON markers and modern strict bracketed format:
+        #   [START] task=<task_id>
+        #   [STEP] action=<action>
+        #   [END] task=<task_id> score=<score>
         json_markers_ok = all(m in inference_src for m in ['"event": "START"', '"event": "STEP"', '"event": "END"'])
+        bracket_markers_ok = all(m in inference_src for m in ["[START]", "[STEP]", "[END]"])
         line_markers_ok = all(m in inference_src for m in ["START ", "STEP ", "END "])
-        failures += 0 if check("inference.py emits START marker", json_markers_ok or line_markers_ok) else 1
-        failures += 0 if check("inference.py emits STEP marker", json_markers_ok or line_markers_ok) else 1
-        failures += 0 if check("inference.py emits END marker", json_markers_ok or line_markers_ok) else 1
+        failures += 0 if check("inference.py emits START marker", json_markers_ok or line_markers_ok or bracket_markers_ok) else 1
+        failures += 0 if check("inference.py emits STEP marker", json_markers_ok or line_markers_ok or bracket_markers_ok) else 1
+        failures += 0 if check("inference.py emits END marker", json_markers_ok or line_markers_ok or bracket_markers_ok) else 1
         failures += 0 if check(
             "Uses OpenAI client",
             "from openai import OpenAI" in inference_src,
         ) else 1
-        for var in ["API_BASE_URL", "MODEL_NAME", "HF_TOKEN", "ENV_URL", "LOCAL_IMAGE_NAME"]:
+        for var in ["API_BASE_URL", "MODEL_NAME", "ENV_URL", "LOCAL_IMAGE_NAME"]:
             failures += 0 if check(f"inference.py reads {var} from env", var in inference_src) else 1
+        failures += 0 if check(
+            "inference.py reads API credentials from env (API_KEY or HF_TOKEN)",
+            ("API_KEY" in inference_src) or ("HF_TOKEN" in inference_src),
+        ) else 1
         api_base_default_ok = (
             'os.getenv("API_BASE_URL", "https://api.openai.com/v1")' in inference_src
             or re.search(r'API_BASE_URL\s*=.*os\.getenv\("API_BASE_URL"\)\s*or\s*"https://api\.openai\.com/v1"', inference_src)
             is not None
         )
-        failures += 0 if check("API_BASE_URL has a default", api_base_default_ok) else 1
+        api_base_env_required_ok = (
+            re.search(r'base_url\s*=\s*os\.getenv\("API_BASE_URL"\)', inference_src) is not None
+            or re.search(r'base_url\s*=\s*os\.environ\["API_BASE_URL"\]', inference_src) is not None
+        )
+        failures += 0 if check(
+            "API_BASE_URL handling is valid (default or strict env)",
+            api_base_default_ok or api_base_env_required_ok,
+        ) else 1
 
         model_default_ok = (
             'os.getenv("MODEL_NAME", "gpt-4o-mini")' in inference_src
@@ -233,11 +244,18 @@ def run_validation(base_url: str) -> int:
         )
         failures += 0 if check("MODEL_NAME has a default", model_default_ok) else 1
 
+        api_key_no_default_ok = (
+            re.search(r'API_KEY\s*=.*os\.getenv\("API_KEY"\)', inference_src) is not None
+            and re.search(r'os\.getenv\("API_KEY"\s*,', inference_src) is None
+        )
         hf_token_no_default_ok = (
-            re.search(r'HF_TOKEN\s*=.*os\.getenv\("HF_TOKEN"\)\s*$', inference_src, flags=re.MULTILINE) is not None
+            re.search(r'HF_TOKEN\s*=.*os\.getenv\("HF_TOKEN"\)', inference_src) is not None
             and re.search(r'os\.getenv\("HF_TOKEN"\s*,', inference_src) is None
         )
-        failures += 0 if check("HF_TOKEN has no default", hf_token_no_default_ok) else 1
+        failures += 0 if check(
+            "API key variable has no default",
+            api_key_no_default_ok or hf_token_no_default_ok,
+        ) else 1
     except FileNotFoundError:
         failures += 1
         check("inference.py exists", False, "file not found")
