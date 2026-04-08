@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "acre-openenv"
+version = "1.0.0"
+description = "Autonomous Code Refactoring Environment using OpenEnv"
+authors = [
+    { name = "Pranav Mangal" }
+]
+dependencies = [
+    "fastapi",
+    "uvicorn",
+    "pydantic",
+    "openai",
+    "gymnasium"
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+
+[tool.openenv]
+entry_point = "server.py"
+
