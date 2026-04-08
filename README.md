@@ -11,114 +11,158 @@ tags:
   - openenv
 ---
 
-# ACRE - Autonomous Code Refactoring Environment
+# 🚀 ACRE — Autonomous Code Refactoring Environment
 
-ACRE is an OpenEnv-compatible environment for autonomous Python code refactoring. An agent receives real code-cleanup tasks and must improve the code through AST-based transformations while receiving dense reward feedback for correctness, simplification, and performance.
+> OpenEnv-powered AI system for real-world code optimization, refactoring, and evaluation.
 
-## Environment Overview and Motivation
+![Status](https://img.shields.io/badge/Status-Running-success)
+![OpenEnv](https://img.shields.io/badge/OpenEnv-Compatible-blue)
+![Docker](https://img.shields.io/badge/Docker-Ready-green)
 
-This project simulates a realistic developer workflow: cleaning up messy Python code, removing dead logic, simplifying loops, and inlining trivial helpers. The canonical OpenEnv wrapper lives in `openenv_interface.py`, while the original Gymnasium-compatible environment remains available for RL training and demos.
+---
 
-## Definitions of Action and Observation Spaces
+## 🔥 Overview
 
-### Action Space - Discrete(5)
+ACRE is an OpenEnv-compliant environment designed to simulate real-world software engineering workflows such as code cleanup, optimization, and refactoring using AI agents.
 
-| Action | Name | Description |
-|---|---|---|
-| 0 | rename_variable | Rename generic variables like `x`, `tmp`, and `i` |
-| 1 | remove_dead_code | Remove unreachable statements, `if False` branches, and unused assignments |
-| 2 | simplify_loop | Convert append-loops into list comprehensions |
-| 3 | optimize_condition | Simplify `not not x`, `if True`, `if False`, and boolean comparisons |
-| 4 | inline_function | Inline simple single-return module-level functions |
+It enables agents to iteratively improve code through structured actions while receiving dense, step-wise reward feedback.
 
-### Observation Space - Box(4,)
+---
 
-The environment tracks:
+## 💡 Why This Matters
 
-- `code_length`
-- `complexity_score`
-- `runtime_s`
-- `error_flag`
+Modern software systems require automated code optimization and intelligent tooling.
 
-### Typed OpenEnv Models
+ACRE enables:
+- 🤖 AI coding assistants
+- 🔍 Automated code review systems
+- ⚡ Reinforcement learning-based optimization agents
+- 🧠 Learning real developer workflows
 
-The submission-facing interface uses Pydantic models in `models.py`:
+---
 
-- `ObservationModel`
-- `ActionModel`
-- `RewardModel`
-- `StateResponse`
+## 🔄 How It Works
 
-The canonical interface is:
+Code → Action → Refactor → Reward → Repeat
+
+1. Load messy code
+2. Apply transformation
+3. Evaluate using grader
+4. Compute reward
+5. Iterate until optimal
+
+---
+
+## 🧠 Key Features
+
+- ✅ Autonomous code refactoring
+- ⚡ Step-wise reward feedback
+- 🧪 OpenEnv compliant interface
+- 📊 Deterministic grading system
+- 🔁 Reproducible inference pipeline
+- 🐳 Fully containerized (Docker + Hugging Face Spaces)
+
+---
+
+## 📂 Tasks
+
+| Task ID | Difficulty | Objective |
+|--------|----------|----------|
+| `rename_variables` | Easy | Replace generic variable names |
+| `remove_dead_code` | Medium | Remove unreachable logic |
+| `full_refactor` | Hard | Combine multiple optimizations |
+
+Each task uses AST-based transformations and deterministic grading.
+
+---
+
+## 🎯 Reward System
+
+Rewards are computed at every step:
+
+- ✅ Valid executable code → positive reward
+- 📉 Reduced complexity → reward
+- ⚡ Improved performance → reward
+- ❌ Errors or invalid code → penalty
+- 🔁 No progress → penalty
+
+**Normalization:**
+
+`(raw_reward + 32) / 52 → [0, 1]`
+
+---
+
+## 📊 Example Execution
+
+```text
+START rename_variables
+STEP 0
+END 1.00
+
+START remove_dead_code
+STEP 1
+END 0.25
+
+START full_refactor
+STEP 3
+END 0.71
+
+Final Score: 0.65
+```
+
+---
+
+## 🏗️ Architecture
+
+- `server.py` → FastAPI entry point
+- `openenv_interface.py` → OpenEnv wrapper
+- `acre/env/` → Core environment logic
+- `acre/tasks/` → Task definitions
+- `acre/utils/` → Metrics and helpers
+- `inference.py` → Evaluation pipeline
+
+---
+
+## ⚙️ OpenEnv Interface
 
 ```python
-observation = env.reset(...)
+observation = env.reset()
 observation, reward, done, info = env.step(action)
 state = env.state()
 ```
 
-## Task Descriptions with Expected Difficulty Levels
+Uses Pydantic models:
 
-| Task ID | Difficulty | Objective |
-|---|---|---|
-| `rename_variables` | Easy | Remove generic variable names from the snippet |
-| `remove_dead_code` | Medium | Eliminate dead branches, unreachable code, and unused assignments |
-| `full_refactor` | Hard | Combine renaming, dead-code removal, loop simplification, condition optimization, and inlining |
+- `ObservationModel`
+- `ActionModel`
+- `RewardModel`
 
-Each task includes a deterministic AST-based grader returning a score in `[0.0, 1.0]`.
+---
 
-## Reward Design
+## 🌐 HTTP API
 
-Rewards are shaped throughout the trajectory instead of only at the end.
-
-- Success reward for syntactically valid, executable output
-- Complexity reward when control-flow complexity decreases
-- Performance reward when runtime improves
-- Error penalty for invalid or failing code
-- No-change penalty to discourage loops and unproductive actions
-
-Raw reward range is `[-32, 20]`, normalized to `[0.0, 1.0]` with `(raw + 32) / 52`.
-
-## HTTP API
-
-| Method | Path | Purpose |
+| Method | Endpoint | Description |
 |---|---|---|
 | GET | `/` | Health check |
-| GET | `/health` | Compatibility health check |
-| POST | `/reset` | Reset environment and return typed observation/state |
-| POST | `/step` | Apply one action and return typed observation/reward/done |
-| GET | `/state` | Return the current typed state |
-| GET | `/tasks` | List available tasks |
-| POST | `/tasks/{task_id}/grade` | Grade submitted code |
+| GET | `/health` | Compatibility check |
+| POST | `/reset` | Reset environment |
+| POST | `/step` | Execute action |
+| GET | `/state` | Get state |
+| GET | `/tasks` | List tasks |
+| POST | `/tasks/{task_id}/grade` | Grade code |
 
-## Setup and Usage Instructions
+---
 
-### Local setup
+## 🚀 Run Locally
 
 ```bash
 pip install -r requirements.txt
 python server.py
 ```
 
-### Baseline inference
+---
 
-Set environment variables before running:
-
-```bash
-export API_BASE_URL=https://api.openai.com/v1
-export MODEL_NAME=gpt-4o-mini
-export HF_TOKEN=your_key
-export ENV_URL=http://localhost:7860
-python inference.py
-```
-
-Notes:
-
-- `API_BASE_URL` and `MODEL_NAME` have defaults in `inference.py`
-- `HF_TOKEN` is optional because the script falls back to a deterministic heuristic baseline
-- `LOCAL_IMAGE_NAME` is read for evaluator compatibility when using a local Docker image launcher
-
-### Docker / Hugging Face Spaces
+## 🐳 Docker / Hugging Face Spaces
 
 ```bash
 docker build -t acre .
@@ -130,40 +174,68 @@ docker run -p 7860:7860 \
   acre
 ```
 
-The repository is configured for a Docker-based Hugging Face Space and includes the `openenv` tag in the front matter.
+---
 
-## Validation
+## 🧪 Inference
 
-Run the repository validator:
+Set environment variables:
+
+```bash
+export API_BASE_URL=https://api.openai.com/v1
+export MODEL_NAME=gpt-4o-mini
+export HF_TOKEN=your_key
+export ENV_URL=http://localhost:7860
+```
+
+Run:
+
+```bash
+python inference.py
+```
+
+Expected output:
+
+```text
+Easy: 1.00
+Medium: 0.25
+Hard: 0.71
+Final: 0.65
+```
+
+---
+
+## 📌 OpenEnv Compliance
+
+- ✔ `step()` implemented
+- ✔ `reset()` implemented
+- ✔ `state()` implemented
+- ✔ reward shaping
+- ✔ deterministic grading
+- ✔ structured logs
+
+---
+
+## 🧪 Validation
 
 ```bash
 python validate.py --url http://localhost:7860
 ```
 
-When using the official hackathon tooling, also run:
+Or:
 
 ```bash
 openenv validate
 ```
 
-## Interactive Demo
+---
 
-Start the server and open:
+## 🌐 Live Demo
 
-```text
-http://localhost:7860/demo
-```
+👉 Running on Hugging Face Spaces
 
-The demo shows:
+---
 
-- Original code
-- Optimized code
-- Unified diff
-- Per-step action and reward logs
-
-## Baseline Performance Scores
-
-The deterministic fallback policy used by `inference.py` produces the following reproducible task scores:
+## 📊 Baseline Performance
 
 | Task | Score |
 |---|---|
@@ -172,4 +244,17 @@ The deterministic fallback policy used by `inference.py` produces the following 
 | `full_refactor` | 0.7143 |
 | Average | 0.6548 |
 
-These scores come from the built-in heuristic policy with `HF_TOKEN` unset, which keeps the baseline reproducible across runs.
+---
+
+## 🏆 Use Cases
+
+- AI-powered code optimization
+- Automated refactoring tools
+- Reinforcement learning environments
+- Developer productivity systems
+
+---
+
+## 📜 License
+
+MIT License
