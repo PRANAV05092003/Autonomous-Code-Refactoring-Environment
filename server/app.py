@@ -19,6 +19,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse
 from openai import OpenAI
+import uvicorn
 
 # Ensure project root is importable when executed in Spaces/Docker.
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -393,4 +394,19 @@ def optimize(req: OptimizeRequest) -> OptimizeResponse:
         task_id=req.task_id,
         task_score=task_score,
     )
+
+
+def main() -> None:
+    """
+    Entry point for OpenEnv multi-mode deployment.
+
+    - API mode: OpenEnv imports `server.app:app`
+    - CLI mode: OpenEnv / HF can run `server` script -> `server.app:main`
+    """
+    port = int(os.getenv("PORT", "7860"))
+    uvicorn.run("server.app:app", host="0.0.0.0", port=port)
+
+
+if __name__ == "__main__":
+    main()
 
