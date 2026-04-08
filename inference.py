@@ -213,7 +213,7 @@ def run_episode(client: Optional[OpenAI], task_id: str, episode_num: int) -> flo
     state = get_state()
 
     # STRICT logging format required by evaluator.
-    print(f"START {task_id}", flush=True)
+    print(f"[START] task={task_id}", flush=True)
 
     cumulative_reward = 0.0
 
@@ -228,7 +228,7 @@ def run_episode(client: Optional[OpenAI], task_id: str, episode_num: int) -> flo
         cumulative_reward += raw_reward
 
         # STRICT logging format required by evaluator.
-        print(f"STEP {int(action)}", flush=True)
+        print(f"[STEP] action={int(action)}", flush=True)
 
         if result.get("done") or result.get("terminated") or result.get("truncated"):
             break
@@ -237,7 +237,7 @@ def run_episode(client: Optional[OpenAI], task_id: str, episode_num: int) -> flo
     task_score = grade(task_id, final_state.get("current_code", ""))
 
     # STRICT logging format required by evaluator.
-    print(f"END {task_score:.4f}", flush=True)
+    print(f"[END] task={task_id} score={task_score:.4f}", flush=True)
 
     return task_score
 
@@ -326,11 +326,11 @@ def run_all_tasks() -> Dict[str, float]:
                 for _ in range(5):
                     state = get_state()
                     action = _choose_action_name(str(state.get("current_code", "")), task_id)
-                    print(f"STEP {int(action)}", flush=True)
+                    print(f"[STEP] action={int(action)}", flush=True)
                     step_env(action)
                 final_state = get_state()
                 score = float(grade(task_id, final_state.get("current_code", "")))
-                print(f"END {float(score):.4f}", flush=True)
+                print(f"[END] task={task_id} score={float(score):.4f}", flush=True)
                 scores.append(score)
                 if task_id == "rename_variables":
                     results["easy"] = score
@@ -345,18 +345,18 @@ def run_all_tasks() -> Dict[str, float]:
         else:
             # Local in-process execution (fast + no network recursion).
             for task_id in task_plan:
-                print(f"START {task_id}", flush=True)
+                print(f"[START] task={task_id}", flush=True)
                 env.reset(seed=0, task_id=task_id)
                 for _ in range(5):
                     st = env.state()
                     code = str(st.current_code)
                     action = int(_choose_action_name(code, task_id))
-                    print(f"STEP {int(action)}", flush=True)
+                    print(f"[STEP] action={int(action)}", flush=True)
                     env.step(action)
                 st = env.state()
                 task = registry.get_task(task_id)
                 score = float(task.grade_against_expected(st.current_code)) if task is not None else 0.0
-                print(f"END {float(score):.4f}", flush=True)
+                print(f"[END] task={task_id} score={float(score):.4f}", flush=True)
                 scores.append(score)
                 if task_id == "rename_variables":
                     results["easy"] = score
